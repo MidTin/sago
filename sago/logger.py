@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 import logging
 
-logger = logging.getLogger('sago')
+async_logger = logging.getLogger('asyncio')
+
+logger = async_logger.getLogger('sago')
 
 formatter = logging.Formatter(
     '[%(levelname)s](%(name)s) %(asctime)s %(pathname)s %(lineno)d %(funcName)s %(message)s')
