@@ -5,5 +5,5 @@ class LoginTimeoutError(Exception):
     pass
 
 
-class LoginUrlNotFound(Exception):
+class LoginPageUrlNotFound(Exception):
     pass
