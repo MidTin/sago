@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import functools
-import inspect
 import io
 import logging
 import re
@@ -10,8 +9,7 @@ import xml.etree.ElementTree as ET
 import aiohttp
 import pyqrcode
 
-import exceptions
-from utils.functional import AsyncObject, random_num
+from utils.functional import random_num
 
 logger = logging.getLogger('sago')
 
@@ -38,13 +36,6 @@ class Core:
     @property
     def reversed_timestamp(self):
         return abs(~int(time.time()))
-
-    def __getattribute__(self, name):
-        attr = super().__getattribute__(name)
-
-        if inspect.iscoroutinefunction(attr) or inspect.iscoroutine(attr):
-            return functools.update_wrapper(AsyncObject(attr, self.loop), attr)
-        return attr
 
     async def request_uuid(self):
         params = {
@@ -84,39 +75,18 @@ class Core:
         print(qrcode.terminal(quiet_zone=1))
 
     async def listen_qrcode_scanned(self, uuid):
-        is_scanned = False
-
         params = {
             'loginicon': 'true',
             'uuid': uuid,
             'tip': 1,
         }
 
-        while not is_scanned:
-            logger.info('Listening the qrcode scan event..')
-            params['_'] = self.reversed_timestamp
+        logger.info('Listening the qrcode scan event..')
+        params['_'] = self.reversed_timestamp
 
-            async with self._client.get(
-                    CHECK_QRCODE_SCANNED_URL, params=params) as resp:
-                ret = await resp.text()
-
-            m = re.search(r'window.code=(?P<code>\d+);', ret)
-            if m:
-                code = m.group('code')
-                if code == '201':
-                    logger.info('QRCode for login is scanned.')
-
-                elif code == '408':
-                    raise exceptions.LoginTimeoutError()
-
-                is_scanned = code == '200'
-        else:
-            m = re.search(
-                r'window.redirect_uri="(?P<redirect_uri>\S+)";', ret)
-            if not m:
-                raise exceptions.LoginPageUrlNotFound()
-
-            return m.group('redirect_uri')
+        async with self._client.get(
+                CHECK_QRCODE_SCANNED_URL, params=params) as resp:
+            return await resp.text()
 
     async def login_confirm(self, login_page_url):
         async with self._client.get(login_page_url) as resp:
