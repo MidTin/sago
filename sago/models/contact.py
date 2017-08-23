@@ -1,10 +1,36 @@
 # -*- coding: utf-8 -*-
-import copy
-
 from .user import AbstractUser
 
 
-class Contact:
+class Contact(dict):
+
+    def __init__(self):
+        self.count = 0
+
+    def add(self, key, contact_list):
+        self[key] = contact_list
+        self.count += len(contact_list)
+
+    def __getattribute__(self, name):
+        attr = self.get(name)
+        if attr:
+            return attr
+
+        return super().__getattribute__(name)
+
+    def search(self, key):
+        for _list in self.values():
+            user = _list.search(key)
+            if user:
+                return user
+
+    def add_user(self, user):
+        for _list in self.values():
+            if isinstance(user, _list.member_type):
+                _list.add(user)
+
+
+class ContactList:
 
     def __init__(self, member_type):
         if not issubclass(member_type, AbstractUser):
@@ -12,26 +38,29 @@ class Contact:
 
         self.member_type = member_type
         self._members = {}
-        self.all_members = []
+        self._nick_name_index = {}
 
     def add(self, *users):
         for u in users:
             if isinstance(u, self.member_type):
                 self._members[u.id] = u
+                self._nick_name_index[u.nickname] = u
 
-        self.all_members = []
+                u.contact_list = self
 
-    def get(self, user_id):
-        user = self._members.get(user_id)
+    def search(self, key):
+        user = self._members.get(key)
         if user:
-            return copy.copy(user)
+            return user
+        else:
+            return self._nick_name_index.get(key)
 
     @property
     def members(self):
-        if not self.all_members:
-            self.all_members = copy.deepcopy(list(self._members.values()))
-
-        return self.all_members
+        return list(self._members.values())
 
     def count(self):
+        return len(self._members)
+
+    def __len__(self):
         return len(self._members)

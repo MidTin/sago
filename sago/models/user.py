@@ -43,8 +43,8 @@ class MP(AbstractUser):
 class ChatRoom(AbstractUser):
     """群聊"""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, initial_data):
+        super().__init__(initial_data)
         self._members = {}
 
     def members(self):

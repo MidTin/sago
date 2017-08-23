@@ -4,7 +4,7 @@ import re
 
 from .core import Core
 from .loop import EventLoop
-from .models.contact import Contact
+from .models.contact import Contact, ContactList
 from .models.user import ChatRoom, create_user, Friend, MP, SpecialAccount, User
 
 
@@ -23,30 +23,13 @@ class BaseSago:
         self.user = None
 
         self._has_logged = False
-        self.contact = {
-            'friends': Contact(Friend),
-            'mps': Contact(MP),
-            'chat_rooms': Contact(ChatRoom),
-            'special_accounts': Contact(SpecialAccount),
-        }
+        self.contact = Contact()
+        self.contact.add('friends', ContactList(Friend))
+        self.contact.add('mps', ContactList(MP))
+        self.contact.add('chatrooms', ContactList(ChatRoom))
+        self.contact.add('special_accounts', ContactList(SpecialAccount))
 
         self.login()
-
-    @property
-    def friends(self):
-        return self.contact['friend']
-
-    @property
-    def mps(self):
-        return self.contact['mps']
-
-    @property
-    def chat_rooms(self):
-        return self.contact['chat_rooms']
-
-    @property
-    def special_accounts(self):
-        return self.contact['special_accounts']
 
     async def _login(self):
         uuid = await self.core.request_uuid()
@@ -72,8 +55,12 @@ class BaseSago:
 
         self._has_logged = True
 
-        await self.update_all_contact()
-        await self.update
+        await self._update_all_contact()
+        await self._update_chatrooms_info()
+
+    async def heart_beat(self):
+        while True:
+            pass
 
     async def waiting_login_confirm(self, uuid):
         while True:
@@ -91,23 +78,44 @@ class BaseSago:
             if code == '408':
                 return self.login_timeout()
 
+    def get_user(self, user_id):
+        for contact in self.contact.values():
+            user = contact.get(user_id)
+            if user:
+                return user
+
+    def update_contact(self, *user_id):
+        pass
+
+    async def _update_contact(self, *user_id):
+        contact_data = self.core.batch_get_contact(
+            self.skey, self.sid, self.uin, self.pass_ticket, *user_id)
+
+        for user_info in contact_data:
+            user = self.get_user(user_info['UserName'])
+            new_user = create_user(user_info)
+            user.contact_list.add(new_user)
+            del user
+
+            if isinstance(new_user, ChatRoom):
+                for member_data in user_info['MemberList']:
+                    member = self.contact.get(member_data['UserName'])
+                    if not member:
+                        member = create_user(member_data)
+
+                    new_user.add(member)
+
+    async def _update_chatrooms_info(self):
+        await self.update_contact(
+            *[u.id for u in self.contact.chatrooms.members])
+
     async def _update_all_contact(self):
-        member_list = await self.core.request_all_contact(
+        contact_data = await self.core.request_all_contact(
             self.skey, self.pass_ticket)
 
-        for user_info in member_list:
+        for user_info in contact_data:
             user = create_user(user_info)
-            if isinstance(user, Friend):
-                self.friends.add(user)
-
-            elif isinstance(user, MP):
-                self.mps.add(user)
-
-            elif isinstance(user, ChatRoom):
-                self.chat_rooms.add(user)
-
-            elif isinstance(user, SpecialAccount):
-                self.special_accounts.add(user)
+            self.contact.add_user(user)
 
     def update_all_contact(self):
         pass

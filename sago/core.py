@@ -18,6 +18,7 @@ LANG = 'zh_CN'
 
 CHECK_QRCODE_SCANNED_URL = r'https://login.wx.qq.com/cgi-bin/mmwebwx-bin/login'
 GET_ALL_CONTACT_URL = r'https://wx.qq.com/cgi-bin/mmwebwx-bin/webwxgetcontact'
+GET_BATCH_CONTACT_URL = r'https://wx.qq.com/cgi-bin/mmwebwx-bin/webwxbatchgetcontact'
 LOGIN_PAGE_URL = r'https://wx.qq.com/cgi-bin/mmwebwx-bin/webwxnewloginpage'
 LOGIN_QRCODE_URL = r'https://login.weixin.qq.com/l/'
 SYNC_CHECK_URL = r'https://webpush.wx.qq.com/cgi-bin/mmwebwx-bin/synccheck'
@@ -178,6 +179,23 @@ class Core:
         async with self._client.post(
                 SYNC_DATA_URL, params=params, json=data) as resp:
             return await resp.json()
+
+    async def batch_get_contact(self, skey, sid, uin, pass_ticket, *username):
+        params = {
+            'pass_ticket': pass_ticket,
+            'r': self.reversed_timestamp,
+            'type': 'ex',
+        }
+
+        data = self.get_base_request_data(skey, sid, uin)
+        data.update({
+            'Count': len(username),
+            'List': [{'UserName': un, 'EncryChatRoomId': ''} for un in username]
+        })
+
+        async with self._client.post(
+                GET_BATCH_CONTACT_URL, params=params, json=data) as resp:
+            return await resp.json()['MemberList']
 
     def __del__(self):
         self._client.close()
