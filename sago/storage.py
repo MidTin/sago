@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 
-from utils.functional import random_str
+from .utils.functional import random_str
 
 
 class BaseStorage:

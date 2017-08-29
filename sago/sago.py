@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-import asyncio
+import functools
 import re
 
 from .core import Core
+from .exceptions import LoginTimeoutError
 from .loop import EventLoop
 from .models.contact import Contact, ContactList
 from .models.user import ChatRoom, create_user, Friend, MP, SpecialAccount, User
+from .utils.functional import AsyncObject
 
 
 class BaseSago:
 
-    def __init__(self):
+    def __init__(self, nowait=True):
         self.loop = EventLoop()
         self.core = Core(loop=self.loop)
 
@@ -22,49 +24,68 @@ class BaseSago:
 
         self.user = None
 
-        self._has_logged = False
+        self.has_logged_in = False
         self.contact = Contact()
         self.contact.add('friends', ContactList(Friend))
         self.contact.add('mps', ContactList(MP))
         self.contact.add('chatrooms', ContactList(ChatRoom))
         self.contact.add('special_accounts', ContactList(SpecialAccount))
 
-        self.login()
+        self.f = self.login(nowait=nowait)
 
-    async def _login(self):
+    def __getattribute__(self, name):
+        try:
+            return super().__getattribute__(name)
+        except AttributeError as ex:
+            try:
+                a_func = super().__getattribute__('a_' + name)
+                return functools.update_wrapper(
+                    AsyncObject(a_func, self.loop), a_func)
+            except AttributeError:
+                raise ex
+
+    async def a_login(self):
+        import time
+        start = int(time.time())
         uuid = await self.core.request_uuid()
         if not uuid:
             raise ValueError('Request uuid failed.')
 
-        qrcode_storage = self.get_qrcode_storage()
-        await self.core.get_login_qrcode(self.uuid, qrcode_storage)
-        self.handle_login_qrcode()
+        print('Fetch uuid finished in %ds' % (int(time.time()) - start))
 
-        login_confirm_url = await self.waiting_login_confirm(uuid)
-        ret = self.core.login_confirm(login_confirm_url)
+        qrcode_storage = self.get_qrcode_storage()
+        await self.core.get_login_qrcode(uuid, qrcode_storage)
+
+        login_confirm_url = await self.a_waiting_login_confirm(uuid)
+        start = int(time.time())
+        ret = await self.core.login_confirm(login_confirm_url)
+        print('login confirm finished in %ds' % (int(time.time()) - start))
 
         self.skey = ret['skey']
         self.sid = ret['sid']
         self.uin = ret['uin']
         self.pass_ticket = ret['pass_ticket']
 
+        start = int(time.time())
         data = await self.core.init_client(
             self.skey, self.sid, self.uin, self.pass_ticket)
-        self._set_user_info(data['user_info'])
+        print('init client finished in %ds' % (int(time.time()) - start))
+        self.set_user_info(data['user_info'])
         self.sync_key = data['sync_key']
 
-        self._has_logged = True
+        self.has_logged_in = True
 
-        await self._update_all_contact()
-        await self._update_chatrooms_info()
+        await self.a_update_all_contact()
+        await self.a_update_chatrooms_info()
 
-    async def heart_beat(self):
-        while True:
+    async def a_heart_beat(self):
+        while self.has_logged_in:
             pass
 
-    async def waiting_login_confirm(self, uuid):
+    async def a_waiting_login_confirm(self, uuid):
+        tip = 1
         while True:
-            ret = await self.core.listen_qrcode_scanned(uuid)
+            ret = await self.core.listen_qrcode_scanned(uuid, tip)
             m = re.search(r'window.code=(?P<code>\d+);', ret)
             code = m.group('code')
             if code == '200':
@@ -73,26 +94,15 @@ class BaseSago:
                 return m.group('redirect_uri')
 
             if code == '201':
+                tip = 0
                 self.qrcode_scanned()
-                continue
-            if code == '408':
-                return self.login_timeout()
 
-    def get_user(self, user_id):
-        for contact in self.contact.values():
-            user = contact.get(user_id)
-            if user:
-                return user
-
-    def update_contact(self, *user_id):
-        pass
-
-    async def _update_contact(self, *user_id):
-        contact_data = self.core.batch_get_contact(
+    async def a_update_contact(self, *user_id):
+        contact_data = await self.core.batch_get_contact(
             self.skey, self.sid, self.uin, self.pass_ticket, *user_id)
 
         for user_info in contact_data:
-            user = self.get_user(user_info['UserName'])
+            user = self.contact.search(user_info['UserName'])
             new_user = create_user(user_info)
             user.contact_list.add(new_user)
             del user
@@ -105,11 +115,11 @@ class BaseSago:
 
                     new_user.add(member)
 
-    async def _update_chatrooms_info(self):
-        await self.update_contact(
+    async def a_update_chatrooms_info(self):
+        await self.a_update_contact(
             *[u.id for u in self.contact.chatrooms.members])
 
-    async def _update_all_contact(self):
+    async def a_update_all_contact(self):
         contact_data = await self.core.request_all_contact(
             self.skey, self.pass_ticket)
 
@@ -117,23 +127,14 @@ class BaseSago:
             user = create_user(user_info)
             self.contact.add_user(user)
 
-    def update_all_contact(self):
-        pass
-
     def qrcode_scanned(self):
-        pass
+        return
 
     def login_timeout(self):
-        pass
+        raise LoginTimeoutError('Login timeout.')
 
     def get_qrcode_storage(self):
-        pass
+        return
 
-    def handle_login_qrcode(self):
-        pass
-
-    def _set_user_info(self, user_info):
+    def set_user_info(self, user_info):
         self.user = User(user_info)
-
-    def login(self):
-        pass

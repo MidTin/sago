@@ -22,6 +22,7 @@ class EventLoop:
         if not cls._loop_instance:
             cls._loop_instance = asyncio.get_event_loop()
             run_event_loop(cls._loop_instance)
+        # cls._loop_instance.set_debug(True)
 
         _lock.release()
         return cls._loop_instance

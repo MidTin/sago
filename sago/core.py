@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 import functools
 import io
+import json
 import logging
 import re
 import time
+import urllib.parse
 import xml.etree.ElementTree as ET
 
 import aiohttp
 import pyqrcode
 
-from utils.functional import random_num
+from .utils.functional import random_num
 
 logger = logging.getLogger('sago')
 
@@ -47,20 +49,22 @@ class Core:
             '_': self.reversed_timestamp,
         }
 
-        resp = await self._client.post(UUID_URL, params=params)
+        start = int(time.time())
+        async with self._client.post(UUID_URL, params=params) as resp:
+            if resp.status != 200:
+                logger.error('The server returned code %s while request uuid',
+                             resp.status)
+                return
 
-        if resp.status != 200:
-            logger.error('The server returned code %s while request uuid',
-                         resp.status)
-            return
+            ret = await resp.text()
+        print('Fetch uuid finished in %ds' % (int(time.time()) - start))
 
-        result = await resp.text()
         m = re.search(
             r'window.QRLogin.code = (?P<status_code>\d+); '
-            r'window.QRLogin.uuid = "(?P<uuid>\S+)"', result)
+            r'window.QRLogin.uuid = "(?P<uuid>\S+)"', ret)
 
         if not m:
-            logger.error('Request uuid failed. resp: %r', result)
+            logger.error('Request uuid failed. resp: %r', ret)
             return
 
         return m.group('uuid')
@@ -75,11 +79,11 @@ class Core:
 
         print(qrcode.terminal(quiet_zone=1))
 
-    async def listen_qrcode_scanned(self, uuid):
+    async def listen_qrcode_scanned(self, uuid, tip=0):
         params = {
             'loginicon': 'true',
             'uuid': uuid,
-            'tip': 1,
+            'tip': tip,
         }
 
         logger.info('Listening the qrcode scan event..')
@@ -90,11 +94,17 @@ class Core:
             return await resp.text()
 
     async def login_confirm(self, login_page_url):
-        async with self._client.get(login_page_url) as resp:
+        params = {
+            'version': 'v2',
+            'fun': 'new',
+        }
+        start = int(time.time())
+        async with self._client.get(
+                login_page_url + urllib.parse.urlencode(params)) as resp:
             xml_ret = await resp.text()
+        print('login confirm finished in %ds' % (int(time.time()) - start))
 
-        tree = ET.fromstring(xml_ret)
-        root = tree.getroot()
+        root = ET.fromstring(xml_ret)
         return {
             'skey': root.find('skey').text,
             'sid': root.find('wxsid').text,
@@ -123,13 +133,13 @@ class Core:
         data = self.get_base_request_data(skey, sid, uin)
         params = {
             'pass_ticket': pass_ticket,
-            'skey': skey,
             'r': self.reversed_timestamp,
+            'lang': self.lang,
         }
 
         async with self._client.post(
                 WECHAT_INIT_URL, params=params, json=data) as resp:
-            ret = await resp.json()
+            ret = json.loads(await resp.text())
 
         return {
             'user_info': ret['User'],
@@ -142,11 +152,10 @@ class Core:
             'pass_ticket': pass_ticket,
             'seq': 0,
             'r': self.reversed_timestamp,
+            'lang': self.lang,
         }
         async with self._client.post(GET_ALL_CONTACT_URL, params=params) as resp:
-            ret = await resp.json()
-
-        return ret['MemberList']
+            return json.loads(await resp.text(encoding='utf-8'))['MemberList']
 
     async def sync_check(self, skey, sid, uin, sync_key):
         params = {
@@ -178,7 +187,7 @@ class Core:
 
         async with self._client.post(
                 SYNC_DATA_URL, params=params, json=data) as resp:
-            return await resp.json()
+            return json.loads(await resp.text(encoding='utf-8'))
 
     async def batch_get_contact(self, skey, sid, uin, pass_ticket, *username):
         params = {
@@ -195,7 +204,7 @@ class Core:
 
         async with self._client.post(
                 GET_BATCH_CONTACT_URL, params=params, json=data) as resp:
-            return await resp.json()['MemberList']
+            return json.loads(await resp.text(encoding='utf-8'))['ContactList']
 
     def __del__(self):
         self._client.close()

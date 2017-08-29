@@ -12,11 +12,10 @@ class Contact(dict):
         self.count += len(contact_list)
 
     def __getattribute__(self, name):
-        attr = self.get(name)
-        if attr:
-            return attr
-
-        return super().__getattribute__(name)
+        try:
+            return self[name]
+        except KeyError:
+            return super().__getattribute__(name)
 
     def search(self, key):
         for _list in self.values():
@@ -28,6 +27,10 @@ class Contact(dict):
         for _list in self.values():
             if isinstance(user, _list.member_type):
                 _list.add(user)
+                self.count += 1
+
+    def __repr__(self):
+        return '<Contact members: %d>' % self.count
 
 
 class ContactList:
@@ -39,6 +42,7 @@ class ContactList:
         self.member_type = member_type
         self._members = {}
         self._nick_name_index = {}
+        self._count = 0
 
     def add(self, *users):
         for u in users:
@@ -47,6 +51,7 @@ class ContactList:
                 self._nick_name_index[u.nickname] = u
 
                 u.contact_list = self
+                self._count += 1
 
     def search(self, key):
         user = self._members.get(key)
@@ -60,7 +65,10 @@ class ContactList:
         return list(self._members.values())
 
     def count(self):
-        return len(self._members)
+        return self._count
 
     def __len__(self):
-        return len(self._members)
+        return self._count
+
+    def __repr__(self):
+        return str(self.members)

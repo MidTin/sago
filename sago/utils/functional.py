@@ -6,23 +6,30 @@ import string
 
 class AsyncObject:
 
-    def __init__(self, func, loop):
+    def __init__(self, coroutine_func, loop):
+        if not asyncio.iscoroutinefunction(coroutine_func):
+            raise ValueError('func should be a coroutine function')
+
+        self.c_func = coroutine_func
         self.loop = loop
-        self.func = func
 
     def __call__(self, *args, **kwargs):
         callback = kwargs.pop('callback', None)
+        nowait = kwargs.pop('nowait', True)
 
-        if asyncio.iscoroutinefunction(self.func):
-            self.func = self.func(*args, **kwargs)
+        future = asyncio.run_coroutine_threadsafe(
+            self.c_func(*args, **kwargs), loop=self.loop)
 
-        future = asyncio.run_coroutine_threadsafe(self.func, loop=self.loop)
         if callback:
             future.add_done_callback(callback)
+
+        if not nowait:
+            return future.result()
+
         return future
 
     def __repr__(self):
-        return repr(self.func)
+        return repr(self.c_func)
 
 
 def random_str(length=10):

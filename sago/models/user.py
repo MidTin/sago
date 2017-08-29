@@ -13,6 +13,10 @@ class AbstractUser:
                            if initial_data.get('HeadImgUrl') else '')
         self.city = initial_data.get('City', '')
 
+    def __repr__(self):
+        return '<%s id: %s nickname: %s>' % (
+            self.__class__.__name__, self.id, self.nickname)
+
 
 class User(AbstractUser):
 
@@ -47,8 +51,9 @@ class ChatRoom(AbstractUser):
         super().__init__(initial_data)
         self._members = {}
 
+    @property
     def members(self):
-        return self._members.values()
+        return list(self._members.values())
 
     def add(self, friend):
         assert isinstance(friend, Friend)
@@ -81,14 +86,15 @@ class SpecialAccount(AbstractUser):
 
 def create_user(user_info):
     username = user_info.get('UserName', '')
-    if username.startwith('@'):
-        if user_info['VerifyFlag'] & 8 != 0:
+    if username.startswith('@'):
+        if username.count('@') == 2:
+            return ChatRoom(user_info)
+
+        elif user_info.get('VerifyFlag', 0) & 8 != 0:
             return MP(user_info)
+
         else:
             return Friend(user_info)
-
-    if username.startwith('@@'):
-        return ChatRoom(user_info)
 
     if username in special_account_name:
         return SpecialAccount(user_info)
