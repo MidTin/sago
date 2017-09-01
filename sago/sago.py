@@ -4,7 +4,7 @@ import re
 
 from .core import Core
 from .exceptions import LoginTimeoutError
-from .models.contacts import Contacts, ContactList
+from .models.contacts import Contacts, ContactGroup
 from .models.user import ChatRoom, create_user, Friend, MP, SpecialAccount, User
 from .utils.functional import AsyncObject
 
@@ -38,10 +38,10 @@ class BaseSago:
 
     def init_contacts(self):
         self.contacts = Contacts()
-        self.contacts.add('friends', ContactList(Friend))
-        self.contacts.add('mps', ContactList(MP))
-        self.contacts.add('chatrooms', ContactList(ChatRoom))
-        self.contacts.add('special_accounts', ContactList(SpecialAccount))
+        self.contacts.add('friends', ContactGroup(Friend))
+        self.contacts.add('mps', ContactGroup(MP))
+        self.contacts.add('chatrooms', ContactGroup(ChatRoom))
+        self.contacts.add('special_accounts', ContactGroup(SpecialAccount))
 
     def run_async(self, method, **kwargs):
         return AsyncObject(method, self.core.loop)(**kwargs)
@@ -126,7 +126,7 @@ class BaseSago:
         for user_info in contact_data:
             user = self.contacts.search(user_info['UserName'])
             new_user = create_user(user_info, self.skey)
-            user.contact_list.add(new_user)
+            user.contact_group.add(new_user)
             del user
 
             if isinstance(new_user, ChatRoom):

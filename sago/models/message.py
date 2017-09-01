@@ -83,3 +83,28 @@ class EmotionMessage(PictureMessage):
             self._content = content
 
         return self._content
+
+
+class UnknownMessage(Message):
+
+    MESSAGE_TYPE = -2
+
+
+class MessageFactory:
+    MESSAGE_TYPES = {
+        TextMessage.MESSAGE_TYPE: TextMessage,
+        PictureMessage.MESSAGE_TYPE: PictureMessage,
+        EmotionMessage.MESSAGE_TYPE: EmotionMessage,
+    }
+
+    def __init__(self, contacts):
+        self.contacts = contacts
+
+    def build(self, msg_data):
+        msg_cls = self.MESSAGE_TYPES.get(msg_data['MsgType'], UnknownMessage)
+        msg_data['FromUserName'] = self.contacts.search(
+            msg_data['FromUserName'])
+        msg_data['ToUserName'] = self.contacts.search(
+            msg_data['ToUserName'])
+
+
