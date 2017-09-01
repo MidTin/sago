@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import functools
 import io
 import json
 import logging
 import re
+import threading
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -11,6 +13,7 @@ import xml.etree.ElementTree as ET
 import aiohttp
 import pyqrcode
 
+from .utils.decorators import singleton
 from .utils.functional import random_num
 
 logger = logging.getLogger('sago')
@@ -31,10 +34,22 @@ WECHAT_INIT_URL = r'https://wx.qq.com/cgi-bin/mmwebwx-bin/webwxinit'
 
 class Core:
 
-    def __init__(self, loop, lang=LANG):
-        self.loop = loop
-        self._client = aiohttp.ClientSession(loop=self.loop)
+    @singleton
+    def __new__(cls, **kwargs):
+        loop = asyncio.get_event_loop()
+        run_event_loop(loop)
+
+        instance = super().__new__(cls, **kwargs)
+        instance._client = aiohttp.ClientSession(loop=loop)
+        instance._loop = loop
+        return instance
+
+    def __init__(self, lang=LANG):
         self.lang = lang
+
+    @property
+    def loop(self):
+        return self._loop
 
     @property
     def reversed_timestamp(self):
@@ -49,15 +64,13 @@ class Core:
             '_': self.reversed_timestamp,
         }
 
-        start = int(time.time())
-        async with self._client.post(UUID_URL, params=params) as resp:
+        async with self._client.get(UUID_URL, params=params) as resp:
             if resp.status != 200:
                 logger.error('The server returned code %s while request uuid',
                              resp.status)
                 return
 
             ret = await resp.text()
-        print('Fetch uuid finished in %ds' % (int(time.time()) - start))
 
         m = re.search(
             r'window.QRLogin.code = (?P<status_code>\d+); '
@@ -75,7 +88,7 @@ class Core:
             buff = io.BytesIO()
             qrcode.png(buff, scale=10)
             fn = functools.partial(storage.save, buff)
-            return await self.loop.run_in_executor(None, fn)
+            return await self._loop.run_in_executor(None, fn)
 
         print(qrcode.terminal(quiet_zone=1))
 
@@ -91,18 +104,19 @@ class Core:
 
         async with self._client.get(
                 CHECK_QRCODE_SCANNED_URL, params=params) as resp:
-            return await resp.text()
+            print(resp.status)
+            ret = await resp.text()
+            print(ret)
+            return ret
 
     async def login_confirm(self, login_page_url):
         params = {
             'version': 'v2',
             'fun': 'new',
         }
-        start = int(time.time())
         async with self._client.get(
                 login_page_url + urllib.parse.urlencode(params)) as resp:
             xml_ret = await resp.text()
-        print('login confirm finished in %ds' % (int(time.time()) - start))
 
         root = ET.fromstring(xml_ret)
         return {
@@ -208,3 +222,9 @@ class Core:
 
     def __del__(self):
         self._client.close()
+
+
+def run_event_loop(loop):
+    thread = threading.Thread(target=loop.run_forever)
+    thread.daemon = True
+    thread.start()

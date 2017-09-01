@@ -3,19 +3,39 @@
 
 class AbstractUser:
 
-    def __init__(self, initial_data):
+    def __init__(self, initial_data, skey):
         if not initial_data.get('UserName'):
             raise ValueError('Intial data should contains UserName.')
 
-        self.id = initial_data['UserName']
-        self.nickname = initial_data.get('NickName', '')
-        self.avatar_url = ('https://wx.qq.com' + initial_data['HeadImgUrl']
-                           if initial_data.get('HeadImgUrl') else '')
-        self.city = initial_data.get('City', '')
+        self._uid = initial_data['UserName']
+        self._nickname = initial_data.get('NickName', '')
+        self._avatar_url = ''
+        if initial_data.get('HeadImgUrl'):
+            self._avatar_url = ''.join((
+                'https://wx.qq.com', initial_data['HeadImgUrl'],
+                initial_data['skey']))
+
+        self._city = initial_data.get('City', '')
 
     def __repr__(self):
         return '<%s id: %s nickname: %s>' % (
-            self.__class__.__name__, self.id, self.nickname)
+            self.__class__.__name__, self.uid, self.nickname)
+
+    @property
+    def uid(self):
+        return self._uid
+
+    @property
+    def nickname(self):
+        return self.nickname
+
+    @property
+    def avatar_url(self):
+        return self._avatar_url
+
+    @property
+    def city(self):
+        return self.city
 
 
 class User(AbstractUser):
@@ -26,7 +46,7 @@ class User(AbstractUser):
         3: '未知',
     }
 
-    def __init__(self, initial_data):
+    def __init__(self, initial_data, skey):
         super().__init__(initial_data)
         self._gender = initial_data.get('Sex', 0)
         self.signature = initial_data.get('Signature', '')
@@ -84,8 +104,9 @@ class SpecialAccount(AbstractUser):
     """
 
 
-def create_user(user_info):
+def create_user(user_info, skey):
     username = user_info.get('UserName', '')
+    user_info['skey'] = skey
     if username.startswith('@'):
         if username.count('@') == 2:
             return ChatRoom(user_info)

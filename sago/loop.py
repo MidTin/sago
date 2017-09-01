@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-
 import asyncio
 import threading
 
-
-_lock = threading.RLock()
+from .utils.decorators import singleton
 
 
 def run_event_loop(loop):
@@ -15,14 +13,9 @@ def run_event_loop(loop):
 
 class EventLoop:
 
-    _loop_instance = None
-
+    @singleton
     def __new__(cls, **kwags):
-        _lock.acquire()
-        if not cls._loop_instance:
-            cls._loop_instance = asyncio.get_event_loop()
-            run_event_loop(cls._loop_instance)
+        loop = asyncio.get_event_loop()
+        run_event_loop(loop)
         # cls._loop_instance.set_debug(True)
-
-        _lock.release()
-        return cls._loop_instance
+        return loop
